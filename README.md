@@ -2,39 +2,6 @@
 
 ASP.NET Core 8 Web API, C#, SQL Server, EF Core Code-First, Swagger, xUnit, and GitHub Actions.
 
-## Based on Part 1
-
-The `/docs` folder preserves the provided Part 1 SQL script, ERD, and 26-endpoint plan. Part 2 implements all **26 planned endpoints**, plus `POST /api/auth/logout`.
-
-**Part 2 amendment:** The Part 1 ERD did not have `Events.EventType`. Part 2 includes a required `EventType` property (Run / Walk / Cycle), as explicitly demanded by the new brief. This is a documented schema change. The Part 1 SQL script includes sample passwords with placeholder hashes, which are **not** valid password hashes; do not import those accounts for login. New accounts use ASP.NET Core `PasswordHasher<User>`.
-
-**Authentication:** Browser Swagger uses an HttpOnly login cookie, which retains role and user ID across calls without copying tokens. JWT bearer is also returned from login and accepted for compatibility with the Part 1 endpoint plan. The `logout` route clears the cookie, but does not revoke previously issued JWTs. HTTPS is essential for deployment; never use the development JWT secret in production.
-
-**Note on registration:** Both Organiser and Participant can self-select their role because the assignment requires this. For a real public service, Organiser access should instead require an invitation or approval. Browser cookie authentication requires additional anti-CSRF measures before using it for a production website.
-
-## Requirements
-
-- Visual Studio 2022 with .NET 8 SDK and ASP.NET/Web development workload
-- SQL Server Express or SQL Server LocalDB (Visual Studio installer) 
-- SQL Server Management Studio is optional
-
-## Getting started
-
-1. Extract ZIP and open `RaceDay.sln` in Visual Studio 2022.
-2. Check `RaceDay.Api/appsettings.json`. Default connection points to `(localdb)\MSSQLLocalDB` and creates database `RaceDayDB_Part2`. Use your own SQL Server instance if LocalDB isn't installed.
-3. Open **Tools > NuGet Package Manager > Package Manager Console**. Choose **RaceDay.Api** as Default Project.
-4. Run `Add-Migration InitialCreate` then `Update-Database`. Alternatively in a terminal:
-   ```bash
-   dotnet tool install --global dotnet-ef --version 8.0.11
-   dotnet ef migrations add InitialCreate --project RaceDay.Api
-   dotnet ef database update --project RaceDay.Api
-   ```
-   The first command may be skipped if `dotnet-ef` is already installed.
-5. Select **RaceDay.Api** as startup project and run HTTPS profile using F5. Open `https://localhost:7162/swagger` (port may vary).
-6. In Swagger, first run `POST /api/auth/register` with role `Organiser`, then `POST /api/auth/login`. Swagger will carry the HttpOnly session cookie in the same browser; you can now create events. Register a `Participant` separately to test participant enrolments. If switching users, call `POST /api/auth/logout` and log in again.
-7. Optional JWT: copy the token from login, open Swagger **Authorize**, enter `Bearer <token>`.
-8. Run tests from **Test > Run All Tests**, or `dotnet test RaceDay.sln`.
-
 ## Examples
 
 `POST /api/auth/register`

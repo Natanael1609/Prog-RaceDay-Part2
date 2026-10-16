@@ -1,0 +1,20 @@
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+namespace RaceDay.Api.Controllers;
+[Route("api")]
+public class ResultsController(RaceDayContext db):ApiControllerBase {
+ /// <summary>Record a participant's finishing time and position for your event.</summary>
+ [Authorize(Roles="Organiser")][HttpPost("events/{eventId:int}/results")]public async Task<IActionResult> Create(int eventId,ResultDto dto){var ev=await db.Events.FindAsync(eventId);if(ev==null)return NotFound();if(ev.OrganiserId!=CurrentUserId)return Forbid();var entry=await db.Enrolments.Include(x=>x.Category).FirstOrDefaultAsync(x=>x.EnrolmentId==dto.EnrolmentId);if(entry==null||entry.Category.EventId!=eventId)return NotFound("Enrolment is not part of this event.");if(entry.Status=="Cancelled")return BadRequest("Cancelled enrolments cannot have results.");if(!TryValidateResult(dto.FinishTime,dto.Position,dto.PaceMinPerKm,dto.ResultStatus,out var time))return BadRequest("Invalid result details.");if(await db.Results.AnyAsync(x=>x.EnrolmentId==dto.EnrolmentId))return Conflict("Result already recorded.");var r=new RaceResult{EnrolmentId=dto.EnrolmentId,FinishTime=time,Position=dto.Position,PaceMinPerKm=dto.PaceMinPerKm,ResultStatus=dto.ResultStatus};db.Results.Add(r);await db.SaveChangesAsync();return StatusCode(201,new{r.ResultId,r.EnrolmentId,r.FinishTime,r.Position,r.PaceMinPerKm,r.ResultStatus});}
+ /// <summary>List the results for an event.</summary>
+ [HttpGet("events/{eventId:int}/results")]public async Task<IActionResult> ForEvent(int eventId){if(!await db.Events.AnyAsync(x=>x.EventId==eventId))return NotFound();return Ok(await db.Results.Where(x=>x.Enrolment.Category.EventId==eventId).OrderBy(x=>x.Position).Select(x=>new{x.ResultId,x.EnrolmentId,x.FinishTime,x.Position,x.PaceMinPerKm,x.ResultStatus}).ToListAsync());}
+ /// <summary>List personal results (Participant only).</summary>
+ [Authorize(Roles="Participant")][HttpGet("users/me/results")]public async Task<IActionResult> Mine()=>Ok(await db.Results.Where(x=>x.Enrolment.UserId==CurrentUserId).Select(x=>new{x.ResultId,x.EnrolmentId,x.FinishTime,x.Position,x.PaceMinPerKm,x.ResultStatus}).ToListAsync());
+ /// <summary>Get a specific result.</summary>
+ [HttpGet("results/{resultId:int}")]public async Task<IActionResult> Get(int resultId){var x=await db.Results.FindAsync(resultId);return x==null?NotFound():Ok(new{x.ResultId,x.EnrolmentId,x.FinishTime,x.Position,x.PaceMinPerKm,x.ResultStatus});}
+ /// <summary>Correct a result for an event you organise.</summary>
+ [Authorize(Roles="Organiser")][HttpPut("results/{resultId:int}")]public async Task<IActionResult> Update(int resultId,ResultUpdateDto dto){var r=await db.Results.Include(x=>x.Enrolment).ThenInclude(x=>x.Category).ThenInclude(x=>x.Event).FirstOrDefaultAsync(x=>x.ResultId==resultId);if(r==null)return NotFound();if(r.Enrolment.Category.Event.OrganiserId!=CurrentUserId)return Forbid();if(!TryValidateResult(dto.FinishTime,dto.Position,dto.PaceMinPerKm,dto.ResultStatus,out var time))return BadRequest("Invalid result.");r.FinishTime=time;r.Position=dto.Position;r.PaceMinPerKm=dto.PaceMinPerKm;r.ResultStatus=dto.ResultStatus;await db.SaveChangesAsync();return Ok(new{r.ResultId,r.EnrolmentId,r.FinishTime,r.Position,r.PaceMinPerKm,r.ResultStatus});}
+ /// <summary>Remove an incorrect result for your event.</summary>
+ [Authorize(Roles="Organiser")][HttpDelete("results/{resultId:int}")]public async Task<IActionResult> Delete(int resultId){var r=await db.Results.Include(x=>x.Enrolment).ThenInclude(x=>x.Category).ThenInclude(x=>x.Event).FirstOrDefaultAsync(x=>x.ResultId==resultId);if(r==null)return NotFound();if(r.Enrolment.Category.Event.OrganiserId!=CurrentUserId)return Forbid();db.Results.Remove(r);await db.SaveChangesAsync();return NoContent();}
+ private static bool TryValidateResult(string raw,int position,decimal pace,string status,out TimeSpan parsed){return TimeSpan.TryParse(raw,out parsed)&&parsed>=TimeSpan.Zero&&parsed<TimeSpan.FromDays(1)&&position>0&&pace>=0&&new[]{"Finished","DNF","DNS","DQ"}.Contains(status);}
+}
